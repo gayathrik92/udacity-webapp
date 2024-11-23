@@ -9,6 +9,11 @@ Parameters:
     Description: Desired capacity for the fleet of instances
     Default: 1
 
+  SSHKeyName:
+    Type: String
+    Description: The name of the existing S3 bucket that contains index.html    
+    Default : webapp
+
 Resources:
 
   SecurityGroup:
@@ -23,29 +28,40 @@ Resources:
         FromPort: 80
         ToPort: 80
         SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0 
   LaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties: 
       LaunchTemplateData:
+        KeyName: !Ref SSHKeyName
         UserData:
           Fn::Base64: !Sub |
             #!/bin/bash 
+            # Update and install necessary packages
             apt-get update -y
-            sudo apt-get install nginx -y
+            apt-get install -y nginx curl unzip
+            # Install AWS CLI if not already installed
+            if ! command -v aws &> /dev/null
+            then
+                curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+                unzip awscliv2.zip
+                sudo ./aws/install
+                rm -f awscliv2.zip  # Clean up the zip file after install
+            fi
+            # Start NGINX service
             service nginx start
-            # Create index.html with the desired content
-            echo "Creating index.html with content 'It works! Udagram, Udacity'"
-            echo "<html>
-            <head>
-            <title>It works!</title>
-            </head>
-            <body>
-            <h1>It works! Udagram, Udacity</h1>
-            </body>
-            </html>" > index.html
+            # Clear the existing index file, if any
             rm -f /var/www/html/index.*
-            sudo cp index.html /var/www/html/index.html
+            # Ensure proper permissions on the web directory
+            sudo chmod 777 /var/www/html
+            # Download the file from S3
+            aws s3 cp s3://udacity-webapp-bucket/index.html /var/www/html/
+            # Reload nginx to apply changes
             sudo systemctl reload nginx
+
         ImageId: ami-0866a3c8686eaeeba
         SecurityGroupIds:
           - !Ref SecurityGroup
@@ -61,7 +77,7 @@ Resources:
     Properties:
       VPCZoneIdentifier:
       - Fn::ImportValue: 
-          !Sub "${ExerciseName}-private-subnets"
+          !Sub "${ExerciseName}-public-subnets"
       LaunchTemplate:
         LaunchTemplateId: !Ref LaunchTemplate
         Version: !GetAtt LaunchTemplate.LatestVersionNumber
@@ -150,29 +166,15 @@ Resources:
               - 's3:PutObject'
               - 's3:GetObject'
               Resource:
-                - !GetAtt S3Bucket.Arn 
+              - arn:aws:s3:::udacity-webapp-bucket/*
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       Path: '/'
       Roles:
       - !Ref IAMRole   
-  S3Bucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "${ExerciseName}-some-suffix"
-      AccessControl: Private
-      VersioningConfiguration:
-        Status: Enabled
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        IgnorePublicAcls: false
-        BlockPublicPolicy: false
-        RestrictPublicBuckets: false
+  
+    
 
 Outputs: 
 

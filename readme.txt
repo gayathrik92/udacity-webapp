@@ -1,1 +1,1 @@
-Load Balancer rule - http://webapp-loadb-ccfgllrhhfqs-1785456929.us-east-1.elb.amazonaws.com
+Load Balancer rule - http://webapp-loadb-bhlctf0mg52e-951655640.us-east-1.elb.amazonaws.com/
